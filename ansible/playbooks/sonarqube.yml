@@ -1,0 +1,17 @@
+- name: Ensure SonarQube is running
+  hosts: localhost
+  tasks:
+    - name: Check if SonarQube container is running
+      docker_container_info:
+        name: sonarqube
+      register: sonarqube_info
+
+    - name: Start SonarQube if not running
+      docker_container:
+        name: sonarqube
+        image: sonarqube:lts
+        state: started
+        ports:
+          - "9000:9000"
+        restart_policy: always
+      when: not sonarqube_info.exists or not sonarqube_info.container.State.Running

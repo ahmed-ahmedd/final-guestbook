@@ -1,0 +1,21 @@
+- name: Deploy application
+  hosts: localhost
+  vars:
+    docker_image: "{{ docker_image }}"
+    docker_hub_username: "{{ docker_hub_username }}"
+  tasks:
+    - name: Pull latest Docker image
+      docker_image:
+        name: "{{ docker_hub_username }}/{{ docker_image }}"
+        tag: latest
+        source: pull
+
+    - name: Stop and remove existing containers
+      docker_compose:
+        project_src: .
+        state: absent
+
+    - name: Start containers
+      docker_compose:
+        project_src: .
+        state: present

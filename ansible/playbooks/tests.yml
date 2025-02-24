@@ -1,0 +1,11 @@
+- name: Run application tests
+  hosts: localhost
+  tasks:
+    - name: Check if test script exists
+      stat:
+        path: tests/run-tests.sh
+      register: test_script
+
+    - name: Run tests
+      shell: ./tests/run-tests.sh
+      when: test_script.stat.exists
