@@ -4,6 +4,10 @@
     docker_image: "{{ docker_image }}"
     docker_hub_username: "{{ docker_hub_username }}"
   tasks:
+    - name: Ensure Python interpreter is set
+      set_fact:
+        ansible_python_interpreter: /usr/bin/python3
+
     - name: Pull latest Docker image
       docker_image:
         name: "{{ docker_hub_username }}/{{ docker_image }}"
