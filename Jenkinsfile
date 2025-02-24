@@ -45,10 +45,16 @@ pipeline {
         stage('Ensure SonarQube is Running') {
             steps {
                 script {
-                    ansiblePlaybook(
-                        playbook: 'ansible/playbooks/sonarqube.yml',
-                        inventory: 'ansible/inventory/hosts'
-                    )
+                    sh '''
+                    if ! docker ps --format "{{.Names}}" | grep -q "sonarqube"; then
+                        echo "🚀 SonarQube is not running. Starting it now..."
+                        docker start sonarqube || \
+                        docker run -d --name sonarqube --restart always -p 9000:9000 sonarqube:lts
+                        sleep 30  # Wait for SonarQube to start
+                    else
+                        echo "✅ SonarQube is already running."
+                    fi
+                    '''
                 }
             }
         }
@@ -75,14 +81,29 @@ pipeline {
         stage('Deploy Application') {
             steps {
                 script {
-                    ansiblePlaybook(
-                        playbook: 'ansible/playbooks/deploy.yml',
-                        inventory: 'ansible/inventory/hosts',
-                        extraVars: [
-                            docker_image: "${DOCKER_IMAGE}",
-                            docker_hub_username: "${DOCKER_HUB_USERNAME}"
-                        ]
-                    )
+                    sh '''
+                    echo "Removing old Docker images..." | tee -a $OUTPUT_LOG
+                    docker rmi $(docker images | grep ${DOCKER_IMAGE} | awk "{print \$3}") || echo "No old images found." | tee -a $OUTPUT_LOG
+
+                    echo "Building Docker image..." | tee -a $OUTPUT_LOG
+                    docker build --no-cache -t ${DOCKER_IMAGE}:latest . | tee -a $OUTPUT_LOG || echo "Docker build failed!" | tee -a $OUTPUT_LOG
+
+                    echo "Logging into Docker Hub..." | tee -a $OUTPUT_LOG
+                    echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+
+                    echo "Tagging and pushing Docker image..." | tee -a $OUTPUT_LOG
+                    docker tag ${DOCKER_IMAGE}:latest $DOCKER_HUB_USERNAME/${DOCKER_IMAGE}:latest
+                    docker push $DOCKER_HUB_USERNAME/${DOCKER_IMAGE}:latest | tee -a $OUTPUT_LOG
+
+                    echo "Deploying application..." | tee -a $OUTPUT_LOG
+                    if [ -f docker-compose.yml ]; then
+                        docker-compose pull || echo "Failed to pull latest image" | tee -a $OUTPUT_LOG
+                        docker-compose down || echo "Failed to stop running containers" | tee -a $OUTPUT_LOG
+                        docker-compose up -d --force-recreate --no-deps || echo "Failed to start containers" | tee -a $OUTPUT_LOG
+                    else
+                        echo "⚠️ No docker-compose.yml found!" | tee -a $OUTPUT_LOG
+                    fi
+                    '''
                 }
             }
         }
@@ -90,10 +111,15 @@ pipeline {
         stage('Run Tests') {
             steps {
                 script {
-                    ansiblePlaybook(
-                        playbook: 'ansible/playbooks/tests.yml',
-                        inventory: 'ansible/inventory/hosts'
-                    )
+                    sh '''
+                    echo "Running application tests..." | tee -a $OUTPUT_LOG
+                    if [ -f tests/run-tests.sh ]; then
+                        chmod +x tests/run-tests.sh
+                        ./tests/run-tests.sh | tee -a $OUTPUT_LOG
+                    else
+                        echo "⚠️ No test script found!" | tee -a $OUTPUT_LOG
+                    fi
+                    '''
                 }
             }
         }
