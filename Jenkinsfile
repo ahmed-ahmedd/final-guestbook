@@ -81,6 +81,22 @@ pipeline {
                 }
             }
         }
+
+        stage('Deploy Application') {
+            steps {
+                script {
+                    sh '''
+                    if [ -f docker-compose.yml ]; then
+                        docker-compose pull || echo "Failed to pull latest image" | tee -a $OUTPUT_LOG
+                        docker-compose down || echo "Failed to stop running containers" | tee -a $OUTPUT_LOG
+                        docker-compose up -d --force-recreate --no-deps || echo "Failed to start containers" | tee -a $OUTPUT_LOG
+                    else
+                        echo "⚠️ No docker-compose.yml found!" | tee -a $OUTPUT_LOG
+                    fi
+                    '''
+                }
+            }
+        }
     }
 
     post {
