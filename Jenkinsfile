@@ -21,21 +21,38 @@ pipeline {
             }
         }
 
-        stage('Cleanup') {
-            steps {
-                script {
-                    sh 'echo "Starting Cleanup..." > $OUTPUT_LOG'
-                    sh 'git clean -fdx'
-                    sh 'rm -f $OUTPUT_LOG || true'
-                }
-            }
-        }
-
         stage('Checkout Code') {
             steps {
                 script {
                     checkout scm
                     sh 'ls -la | tee -a $OUTPUT_LOG'
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                script {
+                    sh '''
+                    echo "Running Unit Tests..." | tee -a $OUTPUT_LOG
+                    ./run_tests.sh | tee -a $OUTPUT_LOG
+                    '''
+                }
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    withSonarQubeEnv('SonarQube') {
+                        sh '''
+                        echo "Running SonarQube Analysis..." | tee -a $OUTPUT_LOG
+                        sonar-scanner \
+                            -Dsonar.projectKey=${SONARQUBE_PROJECT_KEY} \
+                            -Dsonar.sources=. \
+                            -Dsonar.host.url=${SONAR_HOST_URL} | tee -a $OUTPUT_LOG
+                        '''
+                    }
                 }
             }
         }
@@ -68,6 +85,7 @@ pipeline {
 
     post {
         always {
+            echo "Saving Pipeline Output Log..."
             archiveArtifacts artifacts: 'pipeline_output.log', fingerprint: true
         }
         success {
