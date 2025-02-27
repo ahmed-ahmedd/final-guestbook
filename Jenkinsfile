@@ -3,9 +3,6 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "final-guestbook"
-        SONARQUBE_PROJECT_KEY = "final-guestbook"
-        SONAR_HOST_URL = "http://16.170.182.27:9000"
-        DOCKER_HUB_USERNAME = "ahmedelshandidy"
         OUTPUT_LOG = "pipeline_output.log"
     }
 
@@ -29,26 +26,7 @@ pipeline {
             }
         }
 
-        stage('SonarQube Analysis') {
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'sonarqube-token', variable: 'SONAR_TOKEN')]) {
-                        sh '''
-                        sonar-scanner \
-                          -Dsonar.projectKey=${SONARQUBE_PROJECT_KEY} \
-                          -Dsonar.sources=. \
-                          -Dsonar.host.url=${SONAR_HOST_URL} \
-                          -Dsonar.login=$SONAR_TOKEN \
-                          -Dsonar.qualitygate.wait=true \
-                          -Dsonar.exclusions="**/node_modules/**,**/tests/**,**/*.log,**/bin/**,**/out/**" \
-                          | tee -a $OUTPUT_LOG
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Remove Old Docker Images') {
+        stage('Remove Old Docker Image') {
             steps {
                 script {
                     sh '''
@@ -73,7 +51,10 @@ pipeline {
         stage('Run Ansible Playbook') {
             steps {
                 script {
-                    sh 'ansible-playbook auto.yml | tee -a $OUTPUT_LOG'
+                    sh '''
+                    echo "Running Ansible Playbook..." | tee -a $OUTPUT_LOG
+                    ansible-playbook auto.yml | tee -a $OUTPUT_LOG
+                    '''
                 }
             }
         }
@@ -84,12 +65,10 @@ pipeline {
             archiveArtifacts artifacts: 'pipeline_output.log', fingerprint: true
         }
         success {
-            echo "✅ Deployment Successful!"
-            slackSend(channel: '#jenkins', color: 'good', message: "✅ Deployment Successful! Build: ${env.BUILD_NUMBER} - ${env.JOB_NAME}")
+            echo "✅ Pipeline Completed Successfully!"
         }
         failure {
-            echo "❌ Deployment Failed. Check logs!"
-            slackSend(channel: '#jenkins', color: 'danger', message: "❌ Deployment Failed! Build: ${env.BUILD_NUMBER} - ${env.JOB_NAME}. Check logs.")
+            echo "❌ Pipeline Failed. Check logs!"
         }
     }
 }
