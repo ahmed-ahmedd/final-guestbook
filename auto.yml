@@ -10,10 +10,18 @@
       register: jenkins_status
       changed_when: jenkins_status.rc != 0
 
-    - name: List old Docker images
-      command: docker images -f "dangling=true" -q
+    - name: List old Docker images (excluding active ones)
+      shell: |
+        docker images -q --filter "dangling=true"; \
+        docker images --format "{{ '{{' }}.ID{{ '}}' }}" | grep -v "$(docker ps --format "{{ '{{' }}.Image{{ '}}' }}")"
       register: old_images
       changed_when: old_images.stdout != ""
+
+    - name: Stop running containers using old images
+      shell: |
+        docker ps --filter "ancestor={{ item }}" -q | xargs -r docker stop
+      loop: "{{ old_images.stdout_lines }}"
+      when: old_images.stdout_lines | length > 0
 
     - name: Remove old Docker images
       command: docker rmi -f {{ item }}
