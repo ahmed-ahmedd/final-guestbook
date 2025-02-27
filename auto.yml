@@ -1,18 +1,21 @@
----
 - name: Ensure Jenkins is Running and Cleanup Docker Images
   hosts: localhost
-  become: yes
+  gather_facts: yes
   tasks:
-    - name: Ensure Jenkins Container is Running
-      shell: |
-        if ! docker ps --filter "name=jenkins" --format "{{.Names}}" | grep -q jenkins; then
-          echo "Jenkins is not running. Starting now..."
-          docker start jenkins || docker run -d --name jenkins --restart always -p 9090:8080 jenkins/jenkins:lts
-          sleep 10  # Wait for Jenkins to be fully up
-        else
-          echo "✅ Jenkins is already running."
-        fi
 
-    - name: Remove Old "final-guestbook" Images
+    - name: Ensure Jenkins container is running
       shell: |
-        docker images | awk '$1 ~ /final-guestbook/ { print $3 }' | xargs -r docker rmi
+        docker ps --filter "name=jenkins" --format "{{.Names}}" | grep -q "jenkins" || \
+        docker start jenkins
+      register: jenkins_status
+      changed_when: jenkins_status.rc != 0
+
+    - name: List old Docker images
+      command: docker images -f "dangling=true" -q
+      register: old_images
+      changed_when: old_images.stdout != ""
+
+    - name: Remove old Docker images
+      command: docker rmi -f {{ item }}
+      loop: "{{ old_images.stdout_lines }}"
+      when: old_images.stdout_lines | length > 0
