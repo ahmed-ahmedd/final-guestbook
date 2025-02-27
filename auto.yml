@@ -10,10 +10,16 @@
       register: jenkins_status
       changed_when: jenkins_status.rc != 0
 
-    - name: List old Docker images (excluding active ones)
+    - name: Get Jenkins image ID
+      shell: docker inspect --format="{% raw %}{{.Image}}{% endraw %}" jenkins
+      register: jenkins_image
+      changed_when: false
+      ignore_errors: yes
+
+    - name: List old Docker images (excluding active ones & Jenkins)
       shell: |
         docker images -q --filter "dangling=true"; \
-        docker images --format "{{ '{{' }}.ID{{ '}}' }}" | grep -v "$(docker ps --format "{{ '{{' }}.Image{{ '}}' }}")"
+        docker images --format "{{ '{{' }}.ID{{ '}}' }}" | grep -v "$(docker ps --format "{{ '{{' }}.Image{{ '}}' }}")" | grep -v "{{ jenkins_image.stdout }}"
       register: old_images
       changed_when: old_images.stdout != ""
 
@@ -23,7 +29,7 @@
       loop: "{{ old_images.stdout_lines }}"
       when: old_images.stdout_lines | length > 0
 
-    - name: Remove old Docker images
+    - name: Remove old Docker images (except Jenkins)
       command: docker rmi -f {{ item }}
       loop: "{{ old_images.stdout_lines }}"
       when: old_images.stdout_lines | length > 0
