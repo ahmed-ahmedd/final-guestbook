@@ -14,7 +14,7 @@ pipeline {
             steps {
                 script {
                     sh 'echo "Starting Cleanup..." > $OUTPUT_LOG'
-                    sh 'git clean -fdx'  // Safer cleanup
+                    sh 'git clean -fdx'
                     sh 'rm -f $OUTPUT_LOG || true'
                 }
             }
@@ -25,36 +25,6 @@ pipeline {
                 script {
                     checkout scm
                     sh 'ls -la | tee -a $OUTPUT_LOG'
-                }
-            }
-        }
-
-        stage('Verify Environment') {
-            steps {
-                script {
-                    sh '''
-                    docker --version || echo "Docker not installed!" | tee -a $OUTPUT_LOG
-                    docker-compose --version || echo "Docker Compose not found!" | tee -a $OUTPUT_LOG
-                    sonar-scanner --version || echo "SonarScanner not installed!" | tee -a $OUTPUT_LOG
-                    '''
-                }
-            }
-        }
-
-        stage('Ensure SonarQube is Running') {
-            steps {
-                script {
-                    def sonarStatus = sh(script: "docker ps --filter 'name=sonarqube' --format '{{.Names}}'", returnStdout: true).trim()
-                    if (sonarStatus == '') {
-                        echo "🚀 SonarQube is not running. Starting it now..."
-                        sh '''
-                        docker start sonarqube || \
-                        docker run -d --name sonarqube --restart always -p 9000:9000 sonarqube:lts
-                        sleep 30  # Wait for SonarQube to start
-                        '''
-                    } else {
-                        echo "✅ SonarQube is already running."
-                    }
                 }
             }
         }
@@ -78,16 +48,7 @@ pipeline {
             }
         }
 
-        stage('Publish SonarQube Report') {
-            steps {
-                script {
-                    sh 'cp .scannerwork/report-task.txt sonar-report.log || echo "No SonarQube report found!" | tee -a $OUTPUT_LOG'
-                }
-                archiveArtifacts artifacts: 'sonar-report.log', fingerprint: true
-            }
-        }
-
-        stage('Remove Old Docker Image') {
+        stage('Remove Old Docker Images') {
             steps {
                 script {
                     sh '''
@@ -109,32 +70,10 @@ pipeline {
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Run Ansible Playbook') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'docker-hub-token', variable: 'DOCKER_HUB_TOKEN')]) {
-                        sh '''
-                        echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
-                        docker tag ${DOCKER_IMAGE}:latest $DOCKER_HUB_USERNAME/${DOCKER_IMAGE}:latest
-                        docker push $DOCKER_HUB_USERNAME/${DOCKER_IMAGE}:latest | tee -a $OUTPUT_LOG
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Deploy Application') {
-            steps {
-                script {
-                    sh '''
-                    if [ -f docker-compose.yml ]; then
-                        docker-compose pull || echo "Failed to pull latest image" | tee -a $OUTPUT_LOG
-                        docker-compose down || echo "Failed to stop running containers" | tee -a $OUTPUT_LOG
-                        docker-compose up -d --force-recreate --no-deps || echo "Failed to start containers" | tee -a $OUTPUT_LOG
-                    else
-                        echo "⚠️ No docker-compose.yml found!" | tee -a $OUTPUT_LOG
-                    fi
-                    '''
+                    sh 'ansible-playbook auto.yml | tee -a $OUTPUT_LOG'
                 }
             }
         }
