@@ -5,7 +5,7 @@
 
     - name: Ensure Jenkins container is running
       shell: |
-        docker ps --filter "name=jenkins" --format "{{.Names}}" | grep -q "jenkins" || \
+        docker ps --filter "name=jenkins" --format "{% raw %}{{.Names}}{% endraw %}" | grep -q "jenkins" || \
         docker start jenkins
       register: jenkins_status
       changed_when: jenkins_status.rc != 0
