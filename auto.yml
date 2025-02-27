@@ -1,43 +1,18 @@
 ---
-- name: CI/CD Automation
+- name: Ensure Jenkins is Running and Cleanup Docker Images
   hosts: localhost
-  gather_facts: yes
+  become: yes
   tasks:
-
-    - name: Check if SonarQube is running
-      shell: docker ps --filter "name=sonarqube" --format "{{ '{{' }}.Names{{ '}}' }}"
-      register: sonar_status
-      changed_when: false
-
-    - name: Print SonarQube Status
-      debug:
-        msg: "SonarQube Status: {{ sonar_status.stdout }}"
-
-    - name: Run SonarQube Scanner
+    - name: Ensure Jenkins Container is Running
       shell: |
-        sonar-scanner \
-          -Dsonar.projectKey=final-guestbook \
-          -Dsonar.sources=. \
-          -Dsonar.host.url=http://16.170.182.27:9000 \
-          -Dsonar.login={{ lookup('env', 'SONAR_TOKEN') }} \
-          -Dsonar.qualitygate.wait=true \
-          -Dsonar.exclusions="**/node_modules/**,**/tests/**,**/*.log,**/bin/**,**/out/**"
-      environment:
-        SONAR_TOKEN: "{{ lookup('env', 'SONAR_TOKEN') }}"
-      when: sonar_status.stdout != ""
+        if ! docker ps --filter "name=jenkins" --format "{{.Names}}" | grep -q jenkins; then
+          echo "Jenkins is not running. Starting now..."
+          docker start jenkins || docker run -d --name jenkins --restart always -p 9090:8080 jenkins/jenkins:lts
+          sleep 10  # Wait for Jenkins to be fully up
+        else
+          echo "✅ Jenkins is already running."
+        fi
 
-    - name: Remove Old Docker Image
+    - name: Remove Old "final-guestbook" Images
       shell: |
-        echo "Removing old Docker images..."
-        docker rmi $(docker images -q final-guestbook) || echo "No old images found."
-
-    - name: Build Docker Image (No Cache)
-      shell: |
-        echo "Building Docker image..."
-        docker build --no-cache -t final-guestbook:latest .
-
-    - name: Notify Slack
-      shell: |
-        curl -X POST -H 'Content-type: application/json' \
-        --data '{"text":"✅ Jenkins Pipeline Completed! New Docker Image Built: final-guestbook:latest"}' \
-        https://hooks.slack.com/services/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
+        docker images | awk '$1 ~ /final-guestbook/ { print $3 }' | xargs -r docker rmi
