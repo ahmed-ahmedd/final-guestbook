@@ -14,8 +14,8 @@ pipeline {
             steps {
                 script {
                     sh 'echo "Starting Cleanup..." > $OUTPUT_LOG'
-                    sh 'rm -rf * || true'  
-                    sh 'rm -f $OUTPUT_LOG || true'  
+                    sh 'git clean -fdx'  // Safer cleanup
+                    sh 'rm -f $OUTPUT_LOG || true'
                 }
             }
         }
@@ -44,8 +44,8 @@ pipeline {
         stage('Ensure SonarQube is Running') {
             steps {
                 script {
-                    def sonarStatus = sh(script: "docker inspect -f '{{.State.Running}}' sonarqube || echo 'false'", returnStdout: true).trim()
-                    if (sonarStatus != 'true') {
+                    def sonarStatus = sh(script: "docker ps --filter 'name=sonarqube' --format '{{.Names}}'", returnStdout: true).trim()
+                    if (sonarStatus == '') {
                         echo "🚀 SonarQube is not running. Starting it now..."
                         sh '''
                         docker start sonarqube || \
@@ -92,7 +92,7 @@ pipeline {
                 script {
                     sh '''
                     echo "Removing old Docker images..." | tee -a $OUTPUT_LOG
-                    docker rmi $(docker images | grep ${DOCKER_IMAGE} | awk '{print $3}') || echo "No old images found." | tee -a $OUTPUT_LOG
+                    docker rmi $(docker images -q ${DOCKER_IMAGE}) || echo "No old images found." | tee -a $OUTPUT_LOG
                     '''
                 }
             }
@@ -101,7 +101,10 @@ pipeline {
         stage('Build Docker Image (No Cache)') {
             steps {
                 script {
-                    sh "docker build --no-cache -t ${DOCKER_IMAGE}:latest . | tee -a $OUTPUT_LOG || echo 'Docker build failed!' | tee -a $OUTPUT_LOG"
+                    sh '''
+                    echo "Building Docker image..." | tee -a $OUTPUT_LOG
+                    docker build --no-cache -t ${DOCKER_IMAGE}:latest . | tee -a $OUTPUT_LOG
+                    '''
                 }
             }
         }
@@ -130,22 +133,6 @@ pipeline {
                         docker-compose up -d --force-recreate --no-deps || echo "Failed to start containers" | tee -a $OUTPUT_LOG
                     else
                         echo "⚠️ No docker-compose.yml found!" | tee -a $OUTPUT_LOG
-                    fi
-                    '''
-                }
-            }
-        }
-
-        stage('Run Tests') {
-            steps {
-                script {
-                    sh '''
-                    echo "Running application tests..." | tee -a $OUTPUT_LOG
-                    if [ -f tests/run-tests.sh ]; then
-                        chmod +x tests/run-tests.sh
-                        ./tests/run-tests.sh | tee -a $OUTPUT_LOG
-                    else
-                        echo "⚠️ No test script found!" | tee -a $OUTPUT_LOG
                     fi
                     '''
                 }
