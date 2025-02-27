@@ -1,0 +1,55 @@
+---
+- name: CI/CD Automation
+  hosts: localhost
+  become: yes
+  vars:
+    DOCKER_IMAGE: "final-guestbook"
+    SONARQUBE_PROJECT_KEY: "final-guestbook"
+    SONAR_HOST_URL: "http://16.170.182.27:9000"
+    SLACK_WEBHOOK: "https://hooks.slack.com/services/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"
+
+  tasks:
+
+    - name: Check if SonarQube is running
+      command: docker ps --filter "name=sonarqube" --format "{{.Names}}"
+      register: sonar_status
+      changed_when: false
+
+    - name: Start SonarQube if not running
+      command: >
+        docker run -d --name sonarqube --restart always -p 9000:9000 sonarqube:lts
+      when: sonar_status.stdout == ""
+    
+    - name: Wait for SonarQube to be ready
+      pause:
+        seconds: 30
+
+    - name: Run SonarQube Analysis
+      command: >
+        sonar-scanner -Dsonar.projectKey={{ SONARQUBE_PROJECT_KEY }}
+        -Dsonar.sources=.
+        -Dsonar.host.url={{ SONAR_HOST_URL }}
+        -Dsonar.login={{ lookup('env', 'SONAR_TOKEN') }}
+        -Dsonar.qualitygate.wait=true
+        -Dsonar.exclusions="**/node_modules/**,**/tests/**,**/*.log,**/bin/**,**/out/**"
+      environment:
+        SONAR_TOKEN: "{{ lookup('env', 'SONAR_TOKEN') }}"
+    
+    - name: Remove old Docker images
+      command: >
+        docker rmi $(docker images -q {{ DOCKER_IMAGE }}) || echo "No old images found."
+    
+    - name: Build Docker image without cache
+      command: >
+        docker build --no-cache -t {{ DOCKER_IMAGE }}:latest .
+    
+    - name: Send Slack Notification on Success
+      uri:
+        url: "{{ SLACK_WEBHOOK }}"
+        method: POST
+        body_format: json
+        body:
+          text: "✅ Deployment Successful! SonarQube analysis and Docker build completed."
+        headers:
+          Content-Type: "application/json"
+      when: sonar_status.rc == 0
