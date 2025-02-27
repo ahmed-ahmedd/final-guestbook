@@ -57,17 +57,6 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image (No Cache)') {
-            steps {
-                script {
-                    sh '''
-                    echo "Building Docker image..." | tee -a $OUTPUT_LOG
-                    docker build --no-cache -t ${DOCKER_IMAGE}:latest . | tee -a $OUTPUT_LOG
-                    '''
-                }
-            }
-        }
-
         stage('Push Docker Image') {
             steps {
                 script {
