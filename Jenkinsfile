@@ -15,7 +15,7 @@ pipeline {
                 script {
                     sh '''
                     echo "Running Ansible Playbook to Ensure Jenkins & Remove Old Images..." | tee -a $OUTPUT_LOG
-                    ansible-playbook auto.yml | tee -a $OUTPUT_LOG
+                    ansible-playbook -i inventory.ini auto.yml | tee -a $OUTPUT_LOG
                     '''
                 }
             }
