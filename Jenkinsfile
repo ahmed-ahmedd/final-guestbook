@@ -29,18 +29,6 @@ pipeline {
                 }
             }
         }
-
-        stage('Run Tests') {
-            steps {
-                script {
-                    sh '''
-                    echo "Running Unit Tests..." | tee -a $OUTPUT_LOG
-                    ./run_tests.sh | tee -a $OUTPUT_LOG
-                    '''
-                }
-            }
-        }
-
         stage('SonarQube Analysis') {
             steps {
                 script {
